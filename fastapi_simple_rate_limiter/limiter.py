@@ -125,4 +125,5 @@ class RateLimiter:
             p = await self.redis.pipeline()
             await p.hset(key, "last_request_time", current_time)
             await p.hset(key, "request_count", new_count)
+            await p.expire(key, self.seconds)
             await p.execute()
