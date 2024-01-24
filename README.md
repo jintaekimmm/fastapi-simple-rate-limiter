@@ -49,6 +49,8 @@ You must set the Request argument in the FastAPI API function to properly check 
 from fastapi import FastAPI
 from fastapi.requests import Request
 
+from fastapi_simple_rate_limiter import rate_limiter
+
 app = FastAPI()
 
 
@@ -70,6 +72,7 @@ When using redis, you can create a redis session and pass it as an argument as s
 from fastapi import FastAPI
 from fastapi.requests import Request
 
+from fastapi_simple_rate_limiter import rate_limiter
 from fastapi_simple_rate_limiter.database import create_redis_session
 
 app = FastAPI()
@@ -116,6 +119,8 @@ If you want to return a limit exceed result in a user-defined response format ra
 ```python
 from fastapi import FastAPI
 from fastapi.requests import Request
+
+from fastapi_simple_rate_limiter import rate_limiter
 
 app = FastAPI()
 
