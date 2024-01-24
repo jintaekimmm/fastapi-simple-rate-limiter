@@ -52,6 +52,8 @@ FastAPI API 함수에 Request 인자를 설정해야 Client IP 주소와 API URL
 from fastapi import FastAPI
 from fastapi.requests import Request
 
+from fastapi_simple_rate_limiter import rate_limiter
+
 app = FastAPI()
 
 
@@ -73,6 +75,7 @@ redis를 사용하는 경우에는 아래와 같이 redis session을 생성 후 
 from fastapi import FastAPI
 from fastapi.requests import Request
 
+from fastapi_simple_rate_limiter import rate_limiter
 from fastapi_simple_rate_limiter.database import create_redis_session
 
 app = FastAPI()
@@ -120,6 +123,8 @@ async def test_list_api(request: Request):
 ```python
 from fastapi import FastAPI
 from fastapi.requests import Request
+
+from fastapi_simple_rate_limiter import rate_limiter
 
 app = FastAPI()
 
