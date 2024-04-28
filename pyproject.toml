@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastapi-simple-rate-limiter"
-version = "0.0.3"
+version = "0.0.4"
 description = "Rate limiter to limit the number of API requests in FastAPI"
 authors = ["jintaekimmm <jintae.kimmm@gmail.com>"]
 readme = "README.md"
@@ -16,3 +16,8 @@ pytest-asyncio = "^0.21.1"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
+
+[project.urls]
+homepage = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter"
+Documentation = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter/blob/main/README.md"
+Repository = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter"
