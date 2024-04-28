@@ -155,6 +155,39 @@ async def test_list_api(request: Request):
 그러나, 사용자 정의 exception을 만들 때는 반드시 `status_code`와 `message`만을 사용할 수 있는 한계가 있습니다. `message`내에는 구조의 한계를 체크하고 있지 않으므로 그나마 자유로운 형태를 가질 수 있을 것으로 보입니다
 
 
+## New Feature: FailedLimiter
+
+이 Limiter는 특정 실패 횟수를 넘어선다면 접근을 제한하는 기능을 가지고 있습니다
+
+예를 들어, 로그인과 같은 인증 함수에 무분별한 접근을 제한하고 싶은 경우(예: 비밀번호 입력을 5번 틀린다면 30분간 차단하고 싶은 경우)에 사용할 수 있습니다
+
+```python
+from fastapi import FastAPI
+from fastapi.requests import Request
+
+from fastapi_simple_rate_limiter import FailedLimiter
+
+failed_limiter = FailedLimiter(limit=3, seconds=300, redis=r)
+
+
+@app.get("/login")
+@failed_limiter
+async def test_login_api(request: Request):
+    if auth_ok:
+        # After successful login, reset the failure count
+        await failed_limiter.reset(request)
+    else:
+        # If login fails, increment the number of failures
+        await failed_limiter.fail_up(request)
+```
+이 API route는 실패 횟수가 3번이 되면, 300초간 접근을 제한합니다
+
+Decorator에는 limit와 seconds를 필수로 설정해야하며, 실패 제한 횟수와 접근 제한 시간을 입력할 수 있습니다
+
+그외에 사용 가능한 옵션은 rate_limiter와 동일하게 설정할 수 있습니다
+
+custom exception과 redis storage 모두 사용할 수 있습니다
+
 ## Get client real IP Address(X-Forwarded-For)
 
 API Rate limit를 체크할 때에 client의 ip address와 api url path를 혼합하여 키를 사용합니다
