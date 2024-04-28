@@ -1,4 +1,5 @@
 import time
+from dataclasses import dataclass
 from functools import wraps
 from typing import Any, Type
 
@@ -7,15 +8,21 @@ from redis import asyncio as aioredis
 from fastapi_simple_rate_limiter.exception import RateLimitException
 
 
-class RateLimiter:
+@dataclass
+class LimitTypeKey:
+    RateLimit = 'default'
+    FailedLimit = 'failed'
+
+
+class DefaultLimiter:
     def __init__(
-        self,
-        limit: int,
-        seconds: int,
-        redis: aioredis.Redis | None = None,
-        exception: Type[Exception] | None = None,
-        exception_status: int = 429,
-        exception_message: Any = "Rate Limit Exceed",
+            self,
+            limit,
+            seconds: int,
+            redis: aioredis.Redis | None = None,
+            exception: Type[Exception] | None = None,
+            exception_status: int = 429,
+            exception_message: Any = ""
     ):
         self.limit = limit
         self.seconds = seconds
@@ -33,35 +40,7 @@ class RateLimiter:
         except ModuleNotFoundError:
             self.http_exception_module = None
 
-    def __call__(self, func):
-        @wraps(func)
-        async def wrapper(*args, **kwargs):
-            request = kwargs.get("request", None)
-            key = self.__get_key(request)
-
-            if self.redis:
-                await self.__check_in_redis(key)
-            else:
-                await self.__check_in_memory(key)
-
-            return await func(*args, **kwargs)
-
-        return wrapper
-
-    @staticmethod
-    def __get_key(request):
-        """
-        Creates and returns a RateLimit Key
-        Create a key and count the limit according to the Client IP Address and API URL Path.
-
-        :param request: FastAPI.Request Object
-        :return:
-        """
-        if request:
-            return f"default:{request.client.host}:{request.url.path}"
-        return ""
-
-    def __raise_exception(self):
+    def raise_exception(self):
         """
         An exception is raised when the rate limit reaches the limit.
 
@@ -81,6 +60,186 @@ class RateLimiter:
                 status_code=self.exception_status, message=self.exception_message
             )
 
+
+class FailedLimiter(DefaultLimiter):
+    def __init__(
+            self,
+            limit,
+            seconds: int,
+            redis: aioredis.Redis | None = None,
+            exception: Type[Exception] | None = None,
+            exception_status: int = 429,
+            exception_message: Any = ""
+    ):
+        self.exception_message = exception_message if exception_message else f"Access is limited for {seconds} seconds"
+        super().__init__(limit, seconds, redis, exception, exception_status, self.exception_message)
+
+    def __call__(self, func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            request = kwargs.get("request", None)
+            key = self.__get_key(request, LimitTypeKey.FailedLimit)
+
+            if self.redis:
+                await self.__check_in_redis(key)
+            else:
+                await self.__check_in_memory(key)
+
+            return await func(*args, **kwargs)
+
+        return wrapper
+
+    @staticmethod
+    def __get_key(request, key_name: str):
+        """
+        Creates and returns a Limit Key
+        Create a key and count the limit according to the Client IP Address and API URL Path.
+
+        :param request: FastAPI.Request Object
+        :param key_name: Redis Key prefix name
+        :return:
+        """
+        if request:
+            return f"{key_name}:{request.client.host}"
+        return ""
+
+    async def reset(self, request):
+        """
+        Reset the failure count
+
+        :param request: FastAPI.Request Object
+        :return:
+        """
+
+        key = self.__get_key(request, LimitTypeKey.FailedLimit)
+        if self.redis:
+            if await self.redis.exists(key):
+                await self.redis.delete(key)
+        else:
+            del self.local_session[key]
+
+    async def fail_up(self, request):
+        """
+        Increment the failure count if the request fails
+
+        If limit storage is 'memory', use a dictionary of memory to check usage based on the key
+        If limit storage is 'redis', store 'last_request_time' and 'failed_count' values in redis to check usage by key.
+
+        :param request: FastAPI.Request Object
+        :return:
+        """
+
+        key = self.__get_key(request, LimitTypeKey.FailedLimit)
+        current_time = time.time()
+
+        if self.redis:
+            stored_data = await self.redis.hmget(
+                key, ["last_request_time", "failed_count"]
+            )
+            failed_count = int(stored_data[1] or 0)
+
+            if failed_count <= self.limit:
+                new_count = failed_count if failed_count > self.limit else failed_count + 1
+
+                p = await self.redis.pipeline()
+                await p.hset(key, "last_request_time", current_time)
+                await p.hset(key, "failed_count", new_count)
+                if new_count == self.limit:
+                    await p.expire(key, self.seconds)
+                await p.execute()
+        else:
+            _, failed_count = self.local_session.get(key, (0, 0))
+
+            new_count = failed_count if failed_count >= self.limit else failed_count + 1
+            if failed_count <= self.limit:
+                self.local_session[key] = (current_time, new_count)
+
+    async def __check_in_memory(self, key: str):
+        """
+        This is a check function used when memory is used as rate failed storage.
+        If the failure count exceeds a set limit, restrict access for a specified amount of time
+
+        :param key: FailedLimit Key
+        :return:
+        """
+        current_time = time.time()
+        last_request_time, failed_count = self.local_session.get(key, (0, 0))
+
+        if (current_time - last_request_time) < self.seconds and failed_count >= self.limit:
+            self.raise_exception()
+        else:
+            new_count = 1 if failed_count >= self.limit else failed_count + 1
+            self.local_session[key] = (current_time, new_count)
+
+    async def __check_in_redis(self, key: str):
+        """
+        This is a check function used when using Redis as failed limit storage.
+        If the failure count exceeds a set limit, restrict access for a specified amount of time
+
+        :param key: FailedLimit Key
+        :return:
+        """
+        current_time = time.time()
+
+        stored_data = await self.redis.hmget(
+            key, ["last_request_time", "failed_count"]
+        )
+        last_request_time = float(stored_data[0] or 0)
+        failed_count = int(stored_data[1] or 0)
+
+        if (current_time - last_request_time) < self.seconds and failed_count >= self.limit:
+            self.raise_exception()
+
+
+class RateLimiter(DefaultLimiter):
+    def __init__(
+        self,
+        limit: int,
+        seconds: int,
+        redis: aioredis.Redis | None = None,
+        exception: Type[Exception] | None = None,
+        exception_status: int = 429,
+        exception_message: Any = "Rate Limit Exceed",
+    ):
+        self.exception_message = exception_message
+        super().__init__(limit, seconds, redis, exception, exception_status, self.exception_message)
+        # Set a default exception when the rate limit is reached
+        # If 'HTTPException' cannot be used because fastapi is not installed, RateLimitException is thrown.
+        try:
+            from fastapi import HTTPException
+            self.http_exception_module = HTTPException
+        except ModuleNotFoundError:
+            self.http_exception_module = None
+
+    def __call__(self, func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            request = kwargs.get("request", None)
+            key = self.__get_key(request, LimitTypeKey.RateLimit)
+
+            if self.redis:
+                await self.__check_in_redis(key)
+            else:
+                await self.__check_in_memory(key)
+
+            return await func(*args, **kwargs)
+
+        return wrapper
+
+    @staticmethod
+    def __get_key(request, key_name: str):
+        """
+        Creates and returns a RateLimit Key
+        Create a key and count the limit according to the Client IP Address and API URL Path.
+
+        :param request: FastAPI.Request Object
+        :param key_name: Redis Key prefix name
+        :return:
+        """
+        if request:
+            return f"{key_name}:{request.client.host}:{request.url.path}"
+        return ""
+
     async def __check_in_memory(self, key: str):
         """
         This is a check function used when memory is used as rate limit storage.
@@ -95,7 +254,7 @@ class RateLimiter:
         if (
             current_time - last_request_time
         ) < self.seconds and request_count >= self.limit:
-            self.__raise_exception()
+            self.raise_exception()
         else:
             new_count = 1 if request_count >= self.limit else request_count + 1
             self.local_session[key] = (current_time, new_count)
@@ -118,7 +277,7 @@ class RateLimiter:
         if (
             current_time - last_request_time
         ) < self.seconds and request_count >= self.limit:
-            self.__raise_exception()
+            self.raise_exception()
         else:
             new_count = 1 if request_count >= self.limit else request_count + 1
 
