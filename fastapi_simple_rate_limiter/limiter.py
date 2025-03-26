@@ -167,9 +167,6 @@ class FailedLimiter(DefaultLimiter):
 
         if (current_time - last_request_time) < self.seconds and failed_count >= self.limit:
             self.raise_exception()
-        else:
-            new_count = 1 if failed_count >= self.limit else failed_count + 1
-            self.local_session[key] = (current_time, new_count)
 
     async def __check_in_redis(self, key: str):
         """
