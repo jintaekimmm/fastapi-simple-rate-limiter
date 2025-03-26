@@ -22,15 +22,15 @@ class DefaultLimiter:
             redis: aioredis.Redis | None = None,
             exception: Type[Exception] | None = None,
             exception_status: int = 429,
-            exception_message: Any = ""
+            exception_message: Any = "",
     ):
-        self.limit = limit
-        self.seconds = seconds
-        self.local_session = {}
-        self.redis = redis
-        self.exception_cls = exception
-        self.exception_status = exception_status
-        self.exception_message = exception_message
+        self._limit = limit
+        self._seconds = seconds
+        self._local_session = {}
+        self._redis = redis
+        self._exception_cls = exception
+        self._exception_status = exception_status
+        self._exception_message = exception_message
 
         # Set a default exception when the rate limit is reached
         # If 'HTTPException' cannot be used because fastapi is not installed, RateLimitException is thrown.
@@ -49,15 +49,15 @@ class DefaultLimiter:
         If the exception class passed by the user does not exist and FastAPI is not installed, a RateLimitException is thrown.
         :return:
         """
-        if not self.exception_cls and self.http_exception_module:
+        if not self._exception_cls and self.http_exception_module:
             raise self.http_exception_module(
-                status_code=self.exception_status, detail=self.exception_message
+                status_code=self._exception_status, detail=self._exception_message
             )
-        elif not self.exception_cls:
-            raise RateLimitException(self.exception_message)
+        elif not self._exception_cls:
+            raise RateLimitException(self._exception_message)
         else:
-            raise self.exception_cls(
-                status_code=self.exception_status, message=self.exception_message
+            raise self._exception_cls(
+                status_code=self._exception_status, message=self._exception_message
             )
 
 
@@ -69,7 +69,7 @@ class FailedLimiter(DefaultLimiter):
             redis: aioredis.Redis | None = None,
             exception: Type[Exception] | None = None,
             exception_status: int = 429,
-            exception_message: Any = ""
+            exception_message: Any = "",
     ):
         self.exception_message = exception_message if exception_message else f"Access is limited for {seconds} seconds"
         super().__init__(limit, seconds, redis, exception, exception_status, self.exception_message)
@@ -78,9 +78,10 @@ class FailedLimiter(DefaultLimiter):
         @wraps(func)
         async def wrapper(*args, **kwargs):
             request = kwargs.get("request", None)
+
             key = self.__get_key(request, LimitTypeKey.FailedLimit)
 
-            if self.redis:
+            if self._redis:
                 await self.__check_in_redis(key)
             else:
                 await self.__check_in_memory(key)
@@ -112,11 +113,11 @@ class FailedLimiter(DefaultLimiter):
         """
 
         key = self.__get_key(request, LimitTypeKey.FailedLimit)
-        if self.redis:
-            if await self.redis.exists(key):
-                await self.redis.delete(key)
+        if self._redis:
+            if await self._redis.exists(key):
+                await self._redis.delete(key)
         else:
-            del self.local_session[key]
+            del self._local_session[key]
 
     async def fail_up(self, request):
         """
@@ -132,27 +133,27 @@ class FailedLimiter(DefaultLimiter):
         key = self.__get_key(request, LimitTypeKey.FailedLimit)
         current_time = time.time()
 
-        if self.redis:
-            stored_data = await self.redis.hmget(
+        if self._redis:
+            stored_data = await self._redis.hmget(
                 key, ["last_request_time", "failed_count"]
             )
             failed_count = int(stored_data[1] or 0)
 
-            if failed_count <= self.limit:
-                new_count = failed_count if failed_count > self.limit else failed_count + 1
+            if failed_count <= self._limit:
+                new_count = failed_count if failed_count > self._limit else failed_count + 1
 
-                p = await self.redis.pipeline()
+                p = await self._redis.pipeline()
                 await p.hset(key, "last_request_time", current_time)
                 await p.hset(key, "failed_count", new_count)
-                if new_count == self.limit:
-                    await p.expire(key, self.seconds)
+                if new_count == self._limit:
+                    await p.expire(key, self._seconds)
                 await p.execute()
         else:
-            _, failed_count = self.local_session.get(key, (0, 0))
+            _, failed_count = self._local_session.get(key, (0, 0))
 
-            new_count = failed_count if failed_count >= self.limit else failed_count + 1
-            if failed_count <= self.limit:
-                self.local_session[key] = (current_time, new_count)
+            new_count = failed_count if failed_count >= self._limit else failed_count + 1
+            if failed_count <= self._limit:
+                self._local_session[key] = (current_time, new_count)
 
     async def __check_in_memory(self, key: str):
         """
@@ -163,9 +164,9 @@ class FailedLimiter(DefaultLimiter):
         :return:
         """
         current_time = time.time()
-        last_request_time, failed_count = self.local_session.get(key, (0, 0))
+        last_request_time, failed_count = self._local_session.get(key, (0, 0))
 
-        if (current_time - last_request_time) < self.seconds and failed_count >= self.limit:
+        if (current_time - last_request_time) < self._seconds and failed_count >= self._limit:
             self.raise_exception()
 
     async def __check_in_redis(self, key: str):
@@ -178,13 +179,13 @@ class FailedLimiter(DefaultLimiter):
         """
         current_time = time.time()
 
-        stored_data = await self.redis.hmget(
+        stored_data = await self._redis.hmget(
             key, ["last_request_time", "failed_count"]
         )
         last_request_time = float(stored_data[0] or 0)
         failed_count = int(stored_data[1] or 0)
 
-        if (current_time - last_request_time) < self.seconds and failed_count >= self.limit:
+        if (current_time - last_request_time) < self._seconds and failed_count >= self._limit:
             self.raise_exception()
 
 
@@ -214,7 +215,7 @@ class RateLimiter(DefaultLimiter):
             request = kwargs.get("request", None)
             key = self.__get_key(request, LimitTypeKey.RateLimit)
 
-            if self.redis:
+            if self._redis:
                 await self.__check_in_redis(key)
             else:
                 await self.__check_in_memory(key)
@@ -246,15 +247,15 @@ class RateLimiter(DefaultLimiter):
         :return:
         """
         current_time = time.time()
-        last_request_time, request_count = self.local_session.get(key, (0, 0))
+        last_request_time, request_count = self._local_session.get(key, (0, 0))
 
         if (
             current_time - last_request_time
-        ) < self.seconds and request_count >= self.limit:
+        ) < self._seconds and request_count >= self._limit:
             self.raise_exception()
         else:
-            new_count = 1 if request_count >= self.limit else request_count + 1
-            self.local_session[key] = (current_time, new_count)
+            new_count = 1 if request_count >= self._limit else request_count + 1
+            self._local_session[key] = (current_time, new_count)
 
     async def __check_in_redis(self, key: str):
         """
@@ -265,7 +266,7 @@ class RateLimiter(DefaultLimiter):
         :return:
         """
         current_time = time.time()
-        stored_data = await self.redis.hmget(
+        stored_data = await self._redis.hmget(
             key, ["last_request_time", "request_count"]
         )
         last_request_time = float(stored_data[0] or 0)
@@ -273,13 +274,13 @@ class RateLimiter(DefaultLimiter):
 
         if (
             current_time - last_request_time
-        ) < self.seconds and request_count >= self.limit:
+        ) < self._seconds and request_count >= self._limit:
             self.raise_exception()
         else:
-            new_count = 1 if request_count >= self.limit else request_count + 1
+            new_count = 1 if request_count >= self._limit else request_count + 1
 
-            p = await self.redis.pipeline()
+            p = await self._redis.pipeline()
             await p.hset(key, "last_request_time", current_time)
             await p.hset(key, "request_count", new_count)
-            await p.expire(key, self.seconds)
+            await p.expire(key, self._seconds)
             await p.execute()
