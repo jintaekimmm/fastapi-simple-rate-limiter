@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "fastapi-simple-rate-limiter"
-version = "0.0.5"
+version = "0.0.6"
 description = "Rate limiter to limit the number of API requests in FastAPI"
 authors = ["jintaekimmm <jintae.kimmm@gmail.com>"]
 readme = "README.md"
@@ -17,7 +17,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 
-[tool.poetry.urls]
+[project.urls]
 homepage = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter"
 Documentation = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter/blob/main/README.md"
 Repository = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter"
