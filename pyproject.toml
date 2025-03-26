@@ -17,7 +17,7 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 
-[project.urls]
+[tool.poetry.urls]
 homepage = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter"
 Documentation = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter/blob/main/README.md"
 Repository = "https://github.com/jintaekimmm/fastapi-simple-rate-limiter"
