@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="fastapi_simple_rate_limiter",
-    version="0.0.6",
+    version="0.0.7",
     description="Rate limiter to limit the number of API requests in FastAPI",
     author="jintaekimmm",
     author_email="jintae.kimmm@gmail.com",

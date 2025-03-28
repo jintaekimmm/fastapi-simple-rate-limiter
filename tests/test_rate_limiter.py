@@ -9,7 +9,8 @@ def limiter():
 
 @pytest.mark.asyncio
 async def test_rate_limiter_in_memory(limiter):
-    limiter.local_session.clear()
+    limiter._local_session.clear()
+
     for _ in range(3):
         await limiter._RateLimiter__check_in_memory("test_key")
 
