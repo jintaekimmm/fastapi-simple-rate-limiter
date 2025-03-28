@@ -117,7 +117,8 @@ class FailedLimiter(DefaultLimiter):
             if await self._redis.exists(key):
                 await self._redis.delete(key)
         else:
-            del self._local_session[key]
+            if key in self._local_session:
+                del self._local_session[key]
 
     async def fail_up(self, request):
         """
