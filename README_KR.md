@@ -160,7 +160,7 @@ async def test_list_api(request: Request):
 그러나, 사용자 정의 exception을 만들 때는 반드시 `status_code`와 `message`만을 사용할 수 있는 한계가 있습니다. `message`내에는 구조의 한계를 체크하고 있지 않으므로 그나마 자유로운 형태를 가질 수 있을 것으로 보입니다
 
 
-## New Feature: FailedLimiter
+## FailedLimiter
 
 이 Limiter는 특정 실패 횟수를 넘어선다면 접근을 제한하는 기능을 가지고 있습니다
 

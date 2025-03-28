@@ -156,7 +156,7 @@ You can return results as a JSONResponse in the desired format via a custom exce
 However, when creating a custom exception, there is a limitation that only `status_code` and `message` can be used. Since the limits of the structure are not checked within `message`, it seems that it can have a free form.
 
 
-## New Feature: FailedLimiter
+## FailedLimiter
 
 This limiter has the ability to restrict access after a certain number of failures.
 
